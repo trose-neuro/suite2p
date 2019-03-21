@@ -767,8 +767,9 @@ class MainW(QtGui.QMainWindow):
 
     def add_cell_to_ensemble(self):
         average_seed=np.mean(self.Fbin[self.imerge].T,axis=1)
-        print(average_seed)
-        icell = np.array(self.iscell.nonzero()).flatten()
+        print(average_seed.shape)
+        icell = np.sort(np.array(self.iscell.nonzero()),axis=None)
+        print(icell)
         print('shp',self.Fbin[icell].shape)
         ix_dict={}
         i=0
