@@ -780,7 +780,9 @@ class MainW(QtGui.QMainWindow):
                 i+=1
         print(ix_dict)
         corr=self.custom_correlation(average_seed,np.transpose(self.Fbin[icell]))
-        top_corr_cell=np.argmax(corr[[i for i in range(corr.shape[0]) if ix_dict[i] not in self.imerge]])
+        array_ind=[i for i in range(corr.shape[0]) if ix_dict[i] not in self.imerge]
+        top_corr_cell_ind=np.argmax(corr[array_ind])
+        top_corr_cell=array_ind[top_corr_cell_ind]
         print('top corr', top_corr_cell)
         print('im', self.imerge)
         self.imerge.append(ix_dict[top_corr_cell])
