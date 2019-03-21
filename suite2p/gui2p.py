@@ -228,6 +228,11 @@ class MainW(QtGui.QMainWindow):
         self.topedit.setAlignment(QtCore.Qt.AlignRight)
         self.topedit.returnPressed.connect(self.top_number_chosen)
         self.l0.addWidget(self.topedit, 0, 11, 1, 1)
+        #Grow assembly button
+        self.assemblyButton=QtGui.QPushButton("grow assembly", self)
+        self.assemblyButton.clicked.connect(self.add_cell_to_ensemble)
+        self.l0.addWidget(self.assemblyButton, 0, 12,1,2)
+        self.assemblyButton.setEnabled(True)
         # minimize view
         self.sizebtns = QtGui.QButtonGroup(self)
         b = 0
@@ -753,6 +758,47 @@ class MainW(QtGui.QMainWindow):
                 fig.plot_masks(self, M)
                 fig.plot_trace(self)
                 self.show()
+
+    def add_cell_to_ensemble_shortcut(self):
+        print('BOOYAKA')
+        self.ensemble_shortcut = QShortcut(QKeySequence("Ctrl+A"), self)
+        self.ensemble_shortcut.activated.connect(self.add_cell_to_ensemble)
+             
+
+    def add_cell_to_ensemble(self):
+        average_seed=np.mean(self.Fbin[self.imerge].T,axis=1)
+        print(average_seed)
+        icell = np.array(self.iscell.nonzero()).flatten()
+        print('shp',self.Fbin[icell].shape)
+        ix_dict={}
+        i=0
+        print('is cell array',self.iscell.nonzero())
+        for j in range(0, self.Fbin.shape[0]):
+            if np.any(icell == j):
+                ix_dict[i]=j
+                i+=1
+        print(ix_dict)
+        corr=self.custom_correlation(average_seed,np.transpose(self.Fbin[icell]))
+        top_corr_cell=np.argmax(corr[[i for i in range(corr.shape[0]) if ix_dict[i] not in self.imerge]])
+        print('top corr', top_corr_cell)
+        print('im', self.imerge)
+        self.imerge.append(ix_dict[top_corr_cell])
+        M = fig.draw_masks(self)
+        fig.plot_masks(self, M)
+        fig.plot_trace(self)
+        self.show()
+
+    def custom_correlation(self,average_seed, matrix_to_merge):
+        '''
+        Assumes data is in columns.
+        '''
+        centered_average_seed=average_seed-np.mean(average_seed,axis=0)
+        centered_matrix_to_merge=matrix_to_merge-np.mean(matrix_to_merge,axis=0)
+        std_seed=np.sqrt(np.var(centered_average_seed))
+        std_mat=np.sqrt(np.var(centered_matrix_to_merge, axis=0))
+        corr=np.multiply(centered_average_seed.reshape(centered_average_seed.shape[0],1),centered_matrix_to_merge).mean(axis=0)/(std_seed*std_mat)
+        return corr
+    
 
     def ROI_selection(self):
         draw = False
