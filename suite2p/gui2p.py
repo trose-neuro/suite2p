@@ -14,6 +14,7 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interp1d
 import torch
 from scipy import stats
+from suite2p.EnsemblePursuit import EnsemblePursuitPyTorch
 
 def resample_frames(y, x, xt):
     ''' resample y (defined at x) at times xt '''
@@ -239,7 +240,6 @@ class MainW(QtGui.QMainWindow):
         self.assemblyButton.setEnabled(True)
         #Lambda assembly parameter button
         self.lambd = QtGui.QLineEdit(self)
-        self.lambd.setValidator(QtGui.QIntValidator(0, 10000))
         self.lambd.setFixedWidth(50)
         self.lambd.setAlignment(QtCore.Qt.AlignRight)
         self.lambd.returnPressed.connect(self.ensemble_pursuit)
@@ -771,11 +771,13 @@ class MainW(QtGui.QMainWindow):
                 self.show()
 
     def ensemble_pursuit(self):
-        self.lambd_ = int(self.lambd.text())
+        self.lambd_ = float(self.lambd.text())
         icell = np.sort(np.array(self.iscell.nonzero()),axis=None)
-        self.X=torch.cuda.FloatTensor(stats.zscore(self.Fbin[icell],axis=0)).t()
-        self.sz=self.X.size()
-        self.fit_one_assembly()
+        neuron_init_dict={'method':'top_k_corr','parameters':{'T':10,'n_of_neurons':100,'min_assembly_size':8}}
+        neuron_init_dict={'method':'gui_selected','parameters':{'T':10,'n_of_neurons':100,'min_assembly_size':8}}
+        print('Fbin shp',self.Fbin.shape)
+        ep=EnsemblePursuitPyTorch()
+        self.ep_lst=ep.fit_transform_suite2p(self.Fbin.T, self.lambd_, neuron_init_dict, self.imerge)
         ix_dict={}
         i=0
         for j in range(0, self.Fbin.shape[0]):
@@ -787,85 +789,7 @@ class MainW(QtGui.QMainWindow):
         M = fig.draw_masks(self)
         fig.plot_masks(self, M)
         fig.plot_trace(self)
-        self.show()
-
-
-    def corrcoef(self,x):
-        # calculate covariance matrix of columns
-        mean_x = torch.mean(x,0)
-        #print(mean_x.size())
-        #print(mean_x.expand_as(x))
-        xm = torch.sub(x,mean_x)
-        c = x.mm(x.t())
-        c = c / (x.size(1) - 1)
-
-        # normalize covariance matrix
-        d = torch.diag(c)
-        stddev = torch.pow(d, 0.5)
-        c = c.div(stddev.expand_as(c))
-        c = c.div(stddev.expand_as(c).t())
-
-        # clamp between -1 and 1
-        # probably not necessary but numpy does it
-        c = torch.clamp(c, -1.0, 1.0)
-
-        return c
-
-    def select_top_k_corr_neuron(self):
-        corr=self.corrcoef(self.X.t())
-        vals,ix=corr.sort(dim=1)
-        top_vals=vals[:,:-1][:,self.sz[1]-6:]
-        #print(top_vals)
-        av=torch.mean(top_vals,dim=1)
-        vals,top_neurons=torch.sort(av)
-        top_neuron=top_neurons[self.sz[1]-101:]
-        top_val=vals[self.sz[1]-101:]
-        idx=torch.randint(0,100,size=(1,))
-        print(idx)
-        print('top n', top_neuron[idx[0]], top_val[idx[0]])
-        return top_neuron[idx[0]].item()
-
-    def calculate_cost_delta(self):
-        cost_delta=torch.clamp(torch.matmul(self.current_v,self.X),min=0,max=None)**2/torch.matmul(self.current_v,self.current_v)-self.lambd_
-        return cost_delta
-    
-    def fit_one_assembly(self):
-        with torch.cuda.device(0) as device:
-            self.ep_lst=[]
-            top_corr_neuron=self.select_top_k_corr_neuron()
-            self.ep_lst.append(top_corr_neuron)
-            print('neuron',top_corr_neuron)
-            choose_neuron_idx=top_corr_neuron
-            self.selected_neurons=torch.zeros([self.sz[1]]).cuda()
-            self.selected_neurons[choose_neuron_idx]=1
-            self.current_v=self.X[:,choose_neuron_idx]
-            max_delta_cost=1000
-            while max_delta_cost>0:
-                cost_delta=self.calculate_cost_delta()
-                mask=self.selected_neurons.clone()
-                mask[self.selected_neurons==0]=1
-                mask[self.selected_neurons!=0]=0
-                masked_cost_delta=mask*cost_delta
-                values,sorted_neurons=masked_cost_delta.sort()
-                max_delta_neuron=sorted_neurons[-1]
-                self.ep_lst.append(max_delta_neuron.item())
-                max_delta_cost=values[-1]
-                if max_delta_cost>0:
-                    self.current_v=(self.current_v+self.X[:,max_delta_neuron.item()])/2
-                    self.selected_neurons[max_delta_neuron.item()]=1
-
-    def select_top_k_corr_neuron(self):
-        corr=self.corrcoef(self.X.t())
-        vals,ix=corr.sort(dim=1)
-        top_vals=vals[:,:-1][:,self.sz[1]-6:]
-        #print(top_vals)
-        av=torch.mean(top_vals,dim=1)
-        vals,top_neurons=torch.sort(av)
-        top_neuron=top_neurons[self.sz[1]-101:]
-        top_val=vals[self.sz[1]-101:]
-        idx=torch.randint(0,100,size=(1,))
-        return top_neuron[idx[0]].item()
-             
+        self.show()             
 
     def add_cell_to_ensemble(self):
         average_seed=np.mean(self.Fbin[self.imerge].T,axis=1)
